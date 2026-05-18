@@ -1,0 +1,18 @@
+# Local download artifacts
+*.zip
+*.7z
+*.rar
+*.crdownload
+*.part
+*.tmp
+
+# Logs and generated output
+*.log
+*.bak
+*.backup
+
+# Editor/OS noise
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
