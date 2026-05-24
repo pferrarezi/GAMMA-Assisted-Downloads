@@ -8,10 +8,79 @@ param(
     [switch]$All,
     [switch]$NoHash,
     [switch]$DryRun,
-    [int]$StableSeconds = 5
+    [int]$StableSeconds = 5,
+    [ValidateSet("auto", "en", "ru")]
+    [string]$Language = "auto"
 )
 
 $ErrorActionPreference = "Stop"
+
+function Get-ScriptLanguage {
+    param([string]$RequestedLanguage)
+
+    if (-not [string]::IsNullOrWhiteSpace($RequestedLanguage) -and $RequestedLanguage -ne "auto") {
+        return $RequestedLanguage
+    }
+
+    $culture = [System.Globalization.CultureInfo]::CurrentUICulture.Name
+    if ($culture -like "ru*") {
+        return "ru"
+    }
+
+    return "en"
+}
+
+$ScriptLanguage = Get-ScriptLanguage -RequestedLanguage $Language
+$Messages = @{
+    en = @{
+        ModsTxtNotFound = "mods.txt not found: {0}"
+        ModsListed = "Mods listed: {0}"
+        Queued = "Queued: {0}"
+        DownloadsDir = "Downloads dir: {0}"
+        BrowserDownloadsDir = "Browser downloads dir: {0}"
+        Expected = "Expected: {0}"
+        Opening = "Opening:  {0}"
+        Moved = "Moved to GAMMA downloads: {0}"
+        Ok = "OK: {0}"
+        HashMismatch = "Downloaded file exists but MD5 does not match: {0}"
+        HashMismatchPrompt = "Press Enter to continue anyway, R to reopen, S to skip, Q to quit."
+        PresentStable = "Present and stable: {0}"
+        Waiting = "Waiting for {0}. Press Enter to keep waiting, R reopen, P open mod page, S skip, Q quit."
+        Skipped = "Skipped."
+        Done = "Done."
+    }
+    ru = @{
+        ModsTxtNotFound = "mods.txt не найден: {0}"
+        ModsListed = "Модов в списке: {0}"
+        Queued = "В очереди: {0}"
+        DownloadsDir = "Папка загрузок GAMMA: {0}"
+        BrowserDownloadsDir = "Папка загрузок браузера: {0}"
+        Expected = "Ожидаемый файл: {0}"
+        Opening = "Открывается:      {0}"
+        Moved = "Перемещено в загрузки GAMMA: {0}"
+        Ok = "Готово: {0}"
+        HashMismatch = "Файл загружен, но MD5 не совпадает: {0}"
+        HashMismatchPrompt = "Нажмите Enter, чтобы продолжить, R чтобы открыть заново, S чтобы пропустить, Q чтобы выйти."
+        PresentStable = "Файл есть и стабилен: {0}"
+        Waiting = "Ожидание файла {0}. Нажмите Enter, чтобы ждать дальше, R открыть заново, P открыть страницу мода, S пропустить, Q выйти."
+        Skipped = "Пропущено."
+        Done = "Завершено."
+    }
+}
+
+function Get-Message {
+    param(
+        [string]$Key,
+        [object[]]$Values = @()
+    )
+
+    $template = $Messages[$ScriptLanguage][$Key]
+    if ($Values.Count -gt 0) {
+        return [string]::Format($template, $Values)
+    }
+
+    return $template
+}
 
 function Get-Md5Lower {
     param([string]$Path)
@@ -141,7 +210,7 @@ if ([string]::IsNullOrWhiteSpace($BrowserDownloadsDir)) {
 }
 
 if (-not (Test-Path -LiteralPath $ModsFile)) {
-    throw "mods.txt not found: $ModsFile"
+    throw (Get-Message -Key "ModsTxtNotFound" -Values @($ModsFile))
 }
 
 New-Item -ItemType Directory -Force -Path $DownloadsDir | Out-Null
@@ -178,10 +247,10 @@ if ($Limit -gt 0) {
     $queue = @($queue | Select-Object -First $Limit)
 }
 
-Write-Host "Mods listed: $($mods.Count)"
-Write-Host "Queued: $($queue.Count)"
-Write-Host "Downloads dir: $DownloadsDir"
-Write-Host "Browser downloads dir: $BrowserDownloadsDir"
+Write-Host (Get-Message -Key "ModsListed" -Values @($mods.Count))
+Write-Host (Get-Message -Key "Queued" -Values @($queue.Count))
+Write-Host (Get-Message -Key "DownloadsDir" -Values @($DownloadsDir))
+Write-Host (Get-Message -Key "BrowserDownloadsDir" -Values @($BrowserDownloadsDir))
 Write-Host ""
 
 if ($DryRun) {
@@ -195,8 +264,8 @@ foreach ($mod in $queue) {
     $targetUrl = if ($UseModPage) { $mod.Page } else { $mod.Url }
 
     Write-Host "[$index/$($queue.Count)] $($mod.Name)"
-    Write-Host "Expected: $($mod.File)"
-    Write-Host "Opening:  $targetUrl"
+    Write-Host (Get-Message -Key "Expected" -Values @($mod.File))
+    Write-Host (Get-Message -Key "Opening" -Values @($targetUrl))
     Start-Process $targetUrl
 
     $lastLength = -1
@@ -207,20 +276,20 @@ foreach ($mod in $queue) {
 
         $moved = Move-BrowserDownload -Mod $mod -SourceDir $BrowserDownloadsDir -DestinationPath $mod.Path -StableSeconds $StableSeconds
         if ($moved) {
-            Write-Host "Moved to GAMMA downloads: $($mod.File)"
+            Write-Host (Get-Message -Key "Moved" -Values @($mod.File))
         }
 
         $state = Get-DownloadState -Path $mod.Path -ExpectedHash $mod.Hash -CheckHash $checkHash
 
         if ($state.Done) {
-            Write-Host "OK: $($mod.File)"
+            Write-Host (Get-Message -Key "Ok" -Values @($mod.File))
             Write-Host ""
             break
         }
 
         if ($state.Reason -eq "hash-mismatch") {
-            Write-Warning "Downloaded file exists but MD5 does not match: $($mod.File)"
-            Write-Host "Press Enter to continue anyway, R to reopen, S to skip, Q to quit."
+            Write-Warning (Get-Message -Key "HashMismatch" -Values @($mod.File))
+            Write-Host (Get-Message -Key "HashMismatchPrompt")
             $answer = Read-Host
             if ($answer -match "^[Qq]$") { return }
             if ($answer -match "^[Rr]$") { Start-Process $targetUrl; continue }
@@ -235,7 +304,7 @@ foreach ($mod in $queue) {
                 if ($null -eq $stableSince) { $stableSince = Get-Date }
                 $elapsed = ((Get-Date) - $stableSince).TotalSeconds
                 if ($elapsed -ge $StableSeconds -and -not $checkHash) {
-                    Write-Host "Present and stable: $($mod.File)"
+                    Write-Host (Get-Message -Key "PresentStable" -Values @($mod.File))
                     Write-Host ""
                     break
                 }
@@ -245,13 +314,13 @@ foreach ($mod in $queue) {
             }
         }
 
-        Write-Host "Waiting for $($mod.File). Press Enter to keep waiting, R reopen, P open mod page, S skip, Q quit."
+        Write-Host (Get-Message -Key "Waiting" -Values @($mod.File))
         if ([Console]::KeyAvailable) {
             $key = [Console]::ReadKey($true).Key
             switch ($key) {
                 "R" { Start-Process $targetUrl }
                 "P" { Start-Process $mod.Page }
-                "S" { Write-Host "Skipped."; Write-Host ""; break }
+                "S" { Write-Host (Get-Message -Key "Skipped"); Write-Host ""; break }
                 "Q" { return }
                 default { }
             }
@@ -260,4 +329,4 @@ foreach ($mod in $queue) {
     }
 }
 
-Write-Host "Done."
+Write-Host (Get-Message -Key "Done")

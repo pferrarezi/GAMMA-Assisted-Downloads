@@ -1,5 +1,7 @@
 # GAMMA Assisted Downloads
 
+[Русская версия](README.ru.md)
+
 Small PowerShell helper for completing S.T.A.L.K.E.R. GAMMA downloads when the
 Grok's Modpack Installer cannot fetch ModDB files because of Cloudflare or other
 browser-only checks.
@@ -65,6 +67,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "C:\GAMMA\tools\gamma-assist
 - `-DownloadsDir "C:\GAMMA\downloads"`: use a different GAMMA downloads folder.
 - `-NoHash`: skip MD5 validation and accept stable completed files.
 - `-All`: process entries even if the expected file already exists.
+- `-Language ru`: show script messages in Russian. Use `-Language en` to force English.
 
 ## Interactive Keys
 
