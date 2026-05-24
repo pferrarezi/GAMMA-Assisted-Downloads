@@ -1,7 +1,7 @@
 param(
     [string]$ModsFile = "C:\GAMMA\.Grok's Modpack Installer\mods.txt",
     [string]$DownloadsDir = "C:\GAMMA\downloads",
-    [string]$BrowserDownloadsDir = "C:\Users\p_fer\Downloads",
+    [string]$BrowserDownloadsDir = "",
     [int]$Limit = 0,
     [int]$StartAt = 1,
     [switch]$UseModPage,
@@ -16,6 +16,22 @@ $ErrorActionPreference = "Stop"
 function Get-Md5Lower {
     param([string]$Path)
     return (Get-FileHash -Algorithm MD5 -LiteralPath $Path).Hash.ToLowerInvariant()
+}
+
+function Get-DefaultDownloadsDir {
+    $userShellFolders = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders"
+    $downloadsGuid = "{374DE290-123F-4565-9164-39C4925E467B}"
+
+    try {
+        $configuredPath = (Get-ItemProperty -LiteralPath $userShellFolders -Name $downloadsGuid -ErrorAction Stop).$downloadsGuid
+        if (-not [string]::IsNullOrWhiteSpace($configuredPath)) {
+            return [Environment]::ExpandEnvironmentVariables($configuredPath)
+        }
+    } catch {
+        # Fall back to the conventional Downloads folder below.
+    }
+
+    return Join-Path $env:USERPROFILE "Downloads"
 }
 
 function Get-DownloadState {
@@ -118,6 +134,10 @@ function Move-BrowserDownload {
     }
     Move-Item -LiteralPath $sourcePath -Destination $DestinationPath -Force
     return $true
+}
+
+if ([string]::IsNullOrWhiteSpace($BrowserDownloadsDir)) {
+    $BrowserDownloadsDir = Get-DefaultDownloadsDir
 }
 
 if (-not (Test-Path -LiteralPath $ModsFile)) {
